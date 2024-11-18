@@ -1,0 +1,178 @@
+import discord 
+from discord.ext import commands
+from discord import app_commands
+
+import os
+import asyncio
+import datetime
+
+import yt_dlp
+from pytube import Playlist
+
+from enum import Enum
+
+class MusicBotState(Enum):
+    IDLE = 'idle'
+    PLAYING = 'playing'
+    PAUSED = 'paused'
+
+class Music(commands.Cog, description="Commands for playing music from youtube."):
+    def __init__(self, bot):
+        self.bot = bot
+
+        self.guild_info = {}
+        
+        self.YDL_OPTIONS = {
+            'format': 'bestaudio',
+            'noplaylist': True,
+            'quiet': True,
+            'postprocessors': [{  # Extract audio using ffmpeg
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'm4a',
+            }],
+            'outtmpl': './Youtube/%(title)s.%(ext)s',
+        }
+       
+        self.FFMEPEG_OPTIONS = {
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2',
+            'options': '-vn'
+        }
+        
+    def init_guild(self, guild_id):
+        self.guild_info[guild_id] = {
+            'state': MusicBotState.IDLE,
+            'music_queue': [],
+            'voice_channel': None,
+            'music_info': None,
+            'music_info_msg': None,
+        }
+    
+    async def search_youtube(self, query):
+        try:
+            with yt_dlp.YoutubeDL(self.YDL_OPTIONS) as ydl:
+                if any(query.startswith(prefix) for prefix in ["https://www.youtube.com/",  "https://youtu.be/", "https://music.youtube.com/"]):
+                    info = await asyncio.to_thread(ydl.extract_info, url=query, download=False)   
+                else:
+                    info = (await asyncio.to_thread(ydl.extract_info, url=f'ytsearch:{query}', download=False))['entries'][0]
+            song = {
+                'title': info['title'],
+                'duration': info['duration'] if 'duration' in info else 'Live',
+                'channel_name': info['channel'],
+                'channel_url': info['channel_url'],
+                'url': info['webpage_url'],
+                'music_url': [_['url'] for _ in info['formats'] if _.get('format_note') == 'medium' and _.get('ext') == 'webm'][0],
+                'thumbnail': info['thumbnail'],
+            }
+            return song
+        except:
+            return False
+    
+    def my_after(self, guild_id):
+        # if the bot bot is not connected to a voice channel
+        if not self.guild_info[guild_id]['voice_channel'].is_connected():
+            self.guild_info[guild_id]['state'] = MusicBotState.IDLE
+            return 
+        
+        coro = self.play_next(guild_id)
+        future = asyncio.run_coroutine_threadsafe(coro, self.bot.loop)
+    
+    async def idle_timer(self, guild_id, text_channel):
+        await asyncio.sleep(90)
+        if self.guild_info[guild_id]['state'] == MusicBotState.IDLE:
+            emb = discord.Embed(title='Idle for too long! Bye Bye~', color=discord.Color.red())
+            await text_channel.send(embed = emb)
+            await self.voice_channel[guild_id].disconnect()
+            
+            
+    
+    async def play_next(self, guild_id):
+        pass
+
+    def get_playing_info(self, guild_id):
+        emb = discord.Embed(title='Now playing 🎵: ', color=discord.Color.blue())
+        emb.set_thumbnail(url=self.guild_info[guild_id]['music_info']['thumbnail'])
+        emb.add_field(name='Title:', value=f"[{self.guild_info[guild_id]['music_info']['title']}]({self.guild_info[guild_id]['music_info']['url']})", inline=False)
+        emb.add_field(name='Channel:', value=f"[{self.guild_info[guild_id]['music_info']['channel_name']}]({self.guild_info[guild_id]['music_info']['channel_url']})")
+        emb.add_field(name='Duration:', value='Live' if self.guild_info[guild_id]['music_info']['duration'] == 'Live' else datetime.timedelta(seconds = self.guild_info[guild_id]['music_info']['duration']))
+        return emb
+
+    async def play_music(self, guild_id, text_channel, voice_channel):
+        while len(self.guild_info[guild_id]['music_queue']) > 0:
+            self.guild_info[guild_id]['music_info'] = await self.search_youtube(self.guild_info[guild_id]['music_queue'][0])
+            
+            if not self.guild_info[guild_id]['music_info']:
+                await text_channel.send(f"Can not play this track \"{self.guild_info[guild_id]['music_info'][0]}\" skipping to next track.")
+                continue
+            
+            # If find a valid query
+            # self.guild_info[guild_id]['music_queue'].pop(0)
+            
+            break
+        else:
+            await self.idle_timer(guild_id, text_channel)
+            await text_channel.send("Queue is empty.")
+            self.guild_info[guild_id]['state'] = MusicBotState.IDLE
+            return
+        
+        if self.guild_info[guild_id]['voice_channel'] == None or not self.guild_info[guild_id]['voice_channel'].is_connected():
+            self.guild_info[guild_id]['voice_channel'] = await voice_channel.connect()
+            
+        if self.guild_info[guild_id]['voice_channel'] != voice_channel: # if the person using the command is not in the same channel with the bot
+            await self.guild_info[guild_id]['voice_channel'].move_to(voice_channel)
+        
+        self.guild_info[guild_id]['music_info_msg'] = await text_channel.send(embed=self.get_playing_info(guild_id))
+        self.guild_info[guild_id]['state'] = MusicBotState.PLAYING
+        source = await discord.FFmpegOpusAudio.from_probe(self.guild_info[guild_id]['music_info']['music_url'], **self.FFMEPEG_OPTIONS)   
+        self.guild_info[guild_id]['voice_channel'].play(source, after=lambda e: self.my_after(guild_id))
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        # if the bot left the voice channel
+        if member.id == self.bot.user.id and before.channel is not None and after.channel is None:
+            guild_id = before.channel.guild.id
+            self.guild_info[guild_id]['state'] = MusicBotState.IDLE
+            await self.guild_info[guild_id]['music_info_msg'].delete()
+    
+    @app_commands.command(name='play', description='Play music from youtube')
+    async def play(self, interaction: discord.Interaction, query: str = None):
+        guild_id = interaction.guild_id
+        text_channel = interaction.channel
+        try: 
+            voice_channel = interaction.user.voice.channel
+        except:
+            await interaction.response.send_message('You must be in a voice channel to use this command.')
+            return
+        
+        if guild_id not in self.guild_info:
+            self.init_guild(guild_id)
+        
+        if query == None:
+            if self.guild_info[guild_id]['state'] == MusicBotState.PLAYING:
+                await interaction.response.send_message('Music is already playing.')
+            elif self.guild_info[guild_id]['state'] == MusicBotState.PAUSED:
+                await self.guild_info[guild_id]['voice_channel'].resume() ## debug here
+                await interaction.response.send_message('Resume playing music.')
+            else:
+                await interaction.response.send_message('Resume playing music.')
+                await self.play_music(guild_id, text_channel, voice_channel)
+        
+        elif query != None: # addding music to queue
+            if query.startswith("https://www.youtube.com/playlist?list=") or query.startswith("https://music.youtube.com/playlist?list="): # add playlist
+                playlist = Playlist(query)
+                self.guild_info[guild_id]['music_queue'].extend(playlist)
+                await interaction.response.send_message(f"{len(playlist)} songs added to the queue.")
+                
+            elif query.startswith("https://www.youtube.com/watch?v=") or query.startswith("https://music.youtube.com/watch?v=") and "&list" in query: # a song in playing playlist
+                query = query.split('&list')
+                self.guild_info[guild_id]['music_queue'].append(query[0])
+                await interaction.response.send_message("Song added to the queue.")
+                
+            else: # single url or keyword
+                self.guild_info[guild_id]['music_queue'].append(query)
+                await interaction.response.send_message('Query added to the queue.')
+        
+            if self.guild_info[guild_id]['state'] != MusicBotState.PLAYING:
+                await self.play_music(guild_id, text_channel, voice_channel)
+
+async def setup(bot):
+    await bot.add_cog(Music(bot))
