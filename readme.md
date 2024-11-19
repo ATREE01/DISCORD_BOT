@@ -7,7 +7,7 @@ This project is a custom Discord bot designed to enhance the user experience on 
 - **Custom Commands**: Responds to user-defined commands.
 - **Music Playback**: Plays music from youtube.
 
-## Installation
+## Local Installation
 1. Clone the repository:
     ```bash
     git clone https://github.com/ATREE01/DISCORD_BOT.git
@@ -20,12 +20,20 @@ This project is a custom Discord bot designed to enhance the user experience on 
     ```bash
     pip install -r requirements.txt
     ```
+4. Ensure you have `FFmpeg` installed on your system, as it is required for music playback.
+
+## Docker Deploy
+1. 
+    ```bash
+    docker compose up 
+    ```
 
 ## Configuration
 1. Create a `.env` file in the project directory and add your Discord bot token:
     ```env
     TOKEN=your_bot_token_here
     ```
+
 ## Usage
 Start the bot by running:
 ```bash
