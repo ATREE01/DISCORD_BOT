@@ -14,6 +14,7 @@ from enum import Enum
 class MusicBotState(Enum):
     IDLE = 'idle'
     PLAYING = 'playing'
+    SKIPPING = 'skipping'
     PAUSED = 'paused'
 
 class Music(commands.Cog, description="Commands for playing music from youtube."):
@@ -43,6 +44,7 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
             'state': MusicBotState.IDLE,
             'music_queue': [],
             'voice_channel': None,
+            'loop': False,
             'music_info': None,
             'music_info_msg': None,
         }
@@ -67,27 +69,33 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
         except:
             return False
     
-    def my_after(self, guild_id):
+    def my_after(self, guild_id, text_channel):
         # if the bot bot is not connected to a voice channel
         if not self.guild_info[guild_id]['voice_channel'].is_connected():
             self.guild_info[guild_id]['state'] = MusicBotState.IDLE
             return 
         
-        coro = self.play_next(guild_id)
+        coro = self.play_next(guild_id, text_channel)
         future = asyncio.run_coroutine_threadsafe(coro, self.bot.loop)
     
     async def idle_timer(self, guild_id, text_channel):
+        self.guild_info[guild_id]['state'] = MusicBotState.IDLE
         await asyncio.sleep(90)
         if self.guild_info[guild_id]['state'] == MusicBotState.IDLE:
             emb = discord.Embed(title='Idle for too long! Bye Bye~', color=discord.Color.red())
             await text_channel.send(embed = emb)
             await self.voice_channel[guild_id].disconnect()
             
-            
-    
-    async def play_next(self, guild_id):
-        pass
+    async def play_next(self, guild_id, text_channel):
+        if self.guild_info[guild_id]['loop'] != True:
+            self.guild_info[guild_id]['music_queue'].pop(0)
+            try:
+                await self.guild_info[guild_id]['music_info_msg'].delete()
+            except:
+                pass
 
+        await self.play_music(guild_id, text_channel, self.guild_info[guild_id]['voice_channel'])
+    
     def get_playing_info(self, guild_id):
         emb = discord.Embed(title='Now playing 🎵: ', color=discord.Color.blue())
         emb.set_thumbnail(url=self.guild_info[guild_id]['music_info']['thumbnail'])
@@ -99,19 +107,12 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
     async def play_music(self, guild_id, text_channel, voice_channel):
         while len(self.guild_info[guild_id]['music_queue']) > 0:
             self.guild_info[guild_id]['music_info'] = await self.search_youtube(self.guild_info[guild_id]['music_queue'][0])
-            
             if not self.guild_info[guild_id]['music_info']:
                 await text_channel.send(f"Can not play this track \"{self.guild_info[guild_id]['music_info'][0]}\" skipping to next track.")
-                continue
-            
-            # If find a valid query
-            # self.guild_info[guild_id]['music_queue'].pop(0)
-            
+                continue 
             break
         else:
             await self.idle_timer(guild_id, text_channel)
-            await text_channel.send("Queue is empty.")
-            self.guild_info[guild_id]['state'] = MusicBotState.IDLE
             return
         
         if self.guild_info[guild_id]['voice_channel'] == None or not self.guild_info[guild_id]['voice_channel'].is_connected():
@@ -123,7 +124,7 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
         self.guild_info[guild_id]['music_info_msg'] = await text_channel.send(embed=self.get_playing_info(guild_id))
         self.guild_info[guild_id]['state'] = MusicBotState.PLAYING
         source = await discord.FFmpegOpusAudio.from_probe(self.guild_info[guild_id]['music_info']['music_url'], **self.FFMEPEG_OPTIONS)   
-        self.guild_info[guild_id]['voice_channel'].play(source, after=lambda e: self.my_after(guild_id))
+        self.guild_info[guild_id]['voice_channel'].play(source, after=lambda e: self.my_after(guild_id, text_channel))
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
@@ -150,9 +151,9 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
             if self.guild_info[guild_id]['state'] == MusicBotState.PLAYING:
                 await interaction.response.send_message('Music is already playing.')
             elif self.guild_info[guild_id]['state'] == MusicBotState.PAUSED:
-                await self.guild_info[guild_id]['voice_channel'].resume() ## debug here
+                await self.guild_info[guild_id]['voice_channel'].resume()
                 await interaction.response.send_message('Resume playing music.')
-            else:
+            else: # if the queue is not empty and the bot is not playing
                 await interaction.response.send_message('Resume playing music.')
                 await self.play_music(guild_id, text_channel, voice_channel)
         
@@ -171,8 +172,39 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
                 self.guild_info[guild_id]['music_queue'].append(query)
                 await interaction.response.send_message('Query added to the queue.')
         
-            if self.guild_info[guild_id]['state'] != MusicBotState.PLAYING:
+            if self.guild_info[guild_id]['state'] == MusicBotState.IDLE:
                 await self.play_music(guild_id, text_channel, voice_channel)
+
+    @app_commands.command(name='pause', description='Pause the music')
+    async def pause(self, interaction: discord.Interaction):
+        pass
+
+    @app_commands.command(name='skip', description='Skip the current song')
+    async def skip(self, interaction: discord.Interaction):
+        guild_id = interaction.guild_id
+        if guild_id in self.guild_info and self.guild_info[guild_id]['state'] == MusicBotState.PLAYING:
+            self.guild_info[guild_id]['voice_channel'].stop()
+            self.guild_info[guild_id]['state'] = MusicBotState.SKIPPING
+            await interaction.response.send_message('Skipped the current song.')
+        else:
+            await interaction.response.send_message('No music is playing.')
+    
+    @app_commands.command(name='loop', description='Change the loop state of the music currently playing.')
+    async def loop(self, interaction: discord.Interaction):
+        guild_id = interaction.guild_id
+        if guild_id in self.guild_info and self.guild_info[guild_id]['state'] == MusicBotState.PLAYING:
+            self.guild_info[guild_id]['loop'] = not self.guild_info[guild_id]['loop']
+            await interaction.response.send_message('Looping the music.')
+        else:
+            await interaction.response.send_message('No music is playing.')
+    
+    @app_commands.command(name='queue', description='Show the current queue')
+    async def queue(self, interaction: discord.Interaction):
+        pass
+    
+    @app_commands.command(name='clear', description='Clear the queue')
+    async def clear(self, interaction: discord.Interaction):
+        pass
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
