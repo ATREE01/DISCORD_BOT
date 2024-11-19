@@ -1,0 +1,8 @@
+version: "3.8"
+services:
+  app:
+    build:
+      dockerfile: Dockerfile
+    container_name: DiscordBot
+    env_file:
+      - .env
