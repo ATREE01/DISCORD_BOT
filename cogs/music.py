@@ -184,6 +184,7 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
         if guild_id  in self.guild_info and self.guild_info[guild_id]['state'] == MusicBotState.PLAYING:
             await interaction.response.send_message('Music paused. ⏸️')
             self.guild_info[guild_id]['voice_channel'].pause()
+            self.guild_info[guild_id]['state'] = MusicBotState.PAUSED
             return
         else:
             await interaction.response.send_message('No music is playing.')
