@@ -16,6 +16,7 @@ class MusicBotState(Enum):
     PLAYING = 'playing'
     SKIPPING = 'skipping'
     PAUSED = 'paused'
+    
 
 class Music(commands.Cog, description="Commands for playing music from youtube."):
     def __init__(self, bot):
@@ -153,9 +154,11 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
             elif self.guild_info[guild_id]['state'] == MusicBotState.PAUSED:
                 await self.guild_info[guild_id]['voice_channel'].resume()
                 await interaction.response.send_message('Resume playing music.')
-            else: # if the queue is not empty and the bot is not playing
+            elif len(self.guild_info[guild_id]['music_queue']): # if the queue is not empty and the bot is not playing
                 await interaction.response.send_message('Resume playing music.')
                 await self.play_music(guild_id, text_channel, voice_channel)
+            else:
+                await interaction.response.send_message('No music in the queue.')
         
         elif query != None: # addding music to queue
             if query.startswith("https://www.youtube.com/playlist?list=") or query.startswith("https://music.youtube.com/playlist?list="): # add playlist
@@ -177,7 +180,13 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
 
     @app_commands.command(name='pause', description='Pause the music')
     async def pause(self, interaction: discord.Interaction):
-        pass
+        guild_id = interaction.guild_id
+        if guild_id  in self.guild_info and self.guild_info[guild_id]['state'] == MusicBotState.PLAYING:
+            await interaction.response.send_message('Music paused. ⏸️')
+            self.guild_info[guild_id]['voice_channel'].pause()
+            return
+        else:
+            await interaction.response.send_message('No music is playing.')
 
     @app_commands.command(name='skip', description='Skip the current song')
     async def skip(self, interaction: discord.Interaction):
@@ -185,26 +194,84 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
         if guild_id in self.guild_info and self.guild_info[guild_id]['state'] == MusicBotState.PLAYING:
             self.guild_info[guild_id]['voice_channel'].stop()
             self.guild_info[guild_id]['state'] = MusicBotState.SKIPPING
-            await interaction.response.send_message('Skipped the current song.')
+            await interaction.response.send_message('Music skiped. ⏭️')
         else:
             await interaction.response.send_message('No music is playing.')
     
+    @app_commands.command(name='jump', description="Jump to a specific song in the queue(except current one).")
+    async def jump(self, interaction: discord.Interaction, index: int):
+        guild_id = interaction.guild.id
+        if guild_id in self.guild_info  and len(self.guild_info[guild_id]['music_queue']) >= index > 1:
+            self.guild_info[guild_id]['voice_channel'].stop()
+            self.guild_info[guild_id]['music_queue'] = self.guild_info[guild_id]['music_queue'][index - 1:]
+            self.guild_info[guild_id]['state'] = MusicBotState.SKIPPING
+            await interaction.response.send_message(f'Jumped to number {index} ⏭️')
+        else:
+            await interaction.response.send_message('Index out of range.')
+
+    @app_commands.command(name='remove', description="Remove a specific song from the queue.")
+    async def remove(self, interaction: discord.Interaction, index: int):
+        guild_id = interaction.guild.id
+        if guild_id in self.guild_info and len(self.guild_info[guild_id]['music_queue']) >= index > 0:
+            
+            if index == 0:
+                self.guild_info[guild_id]['voice_channel'].stop()
+                self.guild_info[guild_id]['state'] = MusicBotState.SKIPPING
+                
+            self.guild_info[guild_id]['music_queue'].pop(index - 1)
+            await interaction.response.send_message("Music removed.")
+        else:
+            await interaction.response.send_message("Index out of range.")
+
     @app_commands.command(name='loop', description='Change the loop state of the music currently playing.')
     async def loop(self, interaction: discord.Interaction):
         guild_id = interaction.guild_id
         if guild_id in self.guild_info and self.guild_info[guild_id]['state'] == MusicBotState.PLAYING:
+            if self.guild_info[guild_id]['loop']:
+                await interaction.response.send_message('Stop looping the music.')
+            else:
+                await interaction.response.send_message('Looping the music.')
             self.guild_info[guild_id]['loop'] = not self.guild_info[guild_id]['loop']
-            await interaction.response.send_message('Looping the music.')
         else:
             await interaction.response.send_message('No music is playing.')
     
     @app_commands.command(name='queue', description='Show the current queue')
-    async def queue(self, interaction: discord.Interaction):
-        pass
+    async def queue(self,interaction: discord.Interaction, page: int=1):
+        guild_id = interaction.guild.id
+        if guild_id not in self.guild_info or len(self.guild_info[guild_id]['music_queue']) == 0: # bug here
+            await interaction.response.send_message("No music in the queue.") 
+        else:
+            await interaction.response.defer()
+            emb = discord.Embed(title=f'Music queue Total : {len(self.guild_info[guild_id]['music_queue'])}', color=discord.Color.blue())
+            tasks = [self.search_youtube(self.guild_info[guild_id]['music_queue'][i]) for i in range((page-1)*10, min((page)*10, len(self.guild_info[guild_id]['music_queue'])))]
+            results = await asyncio.gather(*tasks)
+            for (index, song) in enumerate(results):
+                try:
+                    emb.add_field(name=('Looping' if self.guild_info[guild_id]['loop'] and index != page*10 else ''), value=f"[{index + 1}. {song['title']}]({song['url']})", inline = False)
+                except:
+                    emb.add_field(name=(' - Looping' if self.guild_info[guild_id]['loop'] and index != page*10 else ''), value=f"({index + 1}) Invalid", inline = False)
+            emb.add_field(name=f'Pages: {page}/{len(self.guild_info[guild_id]['music_queue']) // 10 + 1}', value='', inline=False)
+            await interaction.followup.send(embed=emb)
     
-    @app_commands.command(name='clear', description='Clear the queue')
+    @app_commands.command(name='clear', description='Remove the queue except first one.')
     async def clear(self, interaction: discord.Interaction):
-        pass
+        guild_id = interaction.guild.id
+        if guild_id in self.guild_info and len(self.guild_info[guild_id]['music_queue']) > 1:
+            self.guild_info[guild_id]['music_queue'] = self.guild_info[guild_id]['music_queue'][:1]
+            await interaction.response.send_message('Queue cleared.')
+        else:
+            await interaction.response.send_message('No music in the queue.')
+    
+    @app_commands.command(name='leave',description="Leave voice channel")
+    async def leave(self,interaction:discord.Interaction):
+        guild_id = interaction.guild.id
+        await self.guild_id[guild_id]['voice_channel'].disconnect()
+        await self.guild_id[guild_id]['state'] == MusicBotState.IDLE
+        try:
+            await self.guild_info[guild_id]['music_info_msg'].delete()
+        except:
+            pass
+        await interaction.response.send_message("Bye Bye~. 👋")
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
