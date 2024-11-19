@@ -85,7 +85,7 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
         if self.guild_info[guild_id]['state'] == MusicBotState.IDLE:
             emb = discord.Embed(title='Idle for too long! Bye Bye~', color=discord.Color.red())
             await text_channel.send(embed = emb)
-            await self.voice_channel[guild_id].disconnect()
+            await self.guild_info[guild_id]['voice_channel'].disconnect()
             
     async def play_next(self, guild_id, text_channel):
         if self.guild_info[guild_id]['loop'] != True:
