@@ -152,7 +152,7 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
             if self.guild_info[guild_id]['state'] == MusicBotState.PLAYING:
                 await interaction.response.send_message('Music is already playing.')
             elif self.guild_info[guild_id]['state'] == MusicBotState.PAUSED:
-                await self.guild_info[guild_id]['voice_channel'].resume()
+                self.guild_info[guild_id]['voice_channel'].resume()
                 await interaction.response.send_message('Resume playing music.')
             elif len(self.guild_info[guild_id]['music_queue']): # if the queue is not empty and the bot is not playing
                 await interaction.response.send_message('Resume playing music.')
