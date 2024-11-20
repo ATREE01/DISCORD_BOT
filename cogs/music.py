@@ -57,17 +57,22 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
                     info = await asyncio.to_thread(ydl.extract_info, url=query, download=False)   
                 else:
                     info = (await asyncio.to_thread(ydl.extract_info, url=f'ytsearch:{query}', download=False))['entries'][0]
+            
+            duration = info['duration'] if 'duration' in info else 'Live'        
+            
             song = {
                 'title': info['title'],
-                'duration': info['duration'] if 'duration' in info else 'Live',
+                'duration': duration,
                 'channel_name': info['channel'],
                 'channel_url': info['channel_url'],
                 'url': info['webpage_url'],
-                'music_url': [_['url'] for _ in info['formats'] if _.get('format_note') == 'medium' and _.get('ext') == 'webm'][0],
+                'music_url': [_['url'] for _ in info['formats'] if (duration == 'Live' and _.get('resolution') == 'audio only') or  # get the url for live stream
+                              (_.get('format_note') == 'medium' and _.get('ext') == 'webm')][0], # get the url for normal video
                 'thumbnail': info['thumbnail'],
             }
             return song
-        except:
+        except Exception as e:
+            print(e)
             return False
     
     def my_after(self, guild_id, text_channel):
@@ -109,7 +114,8 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
         while len(self.guild_info[guild_id]['music_queue']) > 0:
             self.guild_info[guild_id]['music_info'] = await self.search_youtube(self.guild_info[guild_id]['music_queue'][0])
             if not self.guild_info[guild_id]['music_info']:
-                await text_channel.send(f"Can not play this track \"{self.guild_info[guild_id]['music_info'][0]}\" skipping to next track.")
+                await text_channel.send(f"Can not play this track \"{self.guild_info[guild_id]['music_queue'][0]}\" skipping to next track.")
+                self.guild_info[guild_id]['music_queue'][0].pop(0)
                 continue 
             break
         else:
