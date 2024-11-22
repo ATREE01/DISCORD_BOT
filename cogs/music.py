@@ -86,19 +86,21 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
     
     async def idle_timer(self, guild_id, text_channel):
         self.guild_info[guild_id]['state'] = MusicBotState.IDLE
-        await asyncio.sleep(90)
+        await asyncio.sleep(180)
         if self.guild_info[guild_id]['state'] == MusicBotState.IDLE:
             emb = discord.Embed(title='Idle for too long! Bye Bye~', color=discord.Color.red())
             await text_channel.send(embed = emb)
             await self.guild_info[guild_id]['voice_channel'].disconnect()
             
     async def play_next(self, guild_id, text_channel):
+        # only when looping, there is no need to pop the first song
         if self.guild_info[guild_id]['loop'] != True:
             self.guild_info[guild_id]['music_queue'].pop(0)
-            try:
-                await self.guild_info[guild_id]['music_info_msg'].delete()
-            except:
-                pass
+        try:
+            await self.guild_info[guild_id]['music_info_msg'].delete()
+            self.guild_info[guild_id]['music_info_msg'] = None
+        except:
+            pass
 
         await self.play_music(guild_id, text_channel, self.guild_info[guild_id]['voice_channel'])
     
@@ -139,7 +141,8 @@ class Music(commands.Cog, description="Commands for playing music from youtube."
         if member.id == self.bot.user.id and before.channel is not None and after.channel is None:
             guild_id = before.channel.guild.id
             self.guild_info[guild_id]['state'] = MusicBotState.IDLE
-            await self.guild_info[guild_id]['music_info_msg'].delete()
+            if self.guild_info[guild_id]['music_info_msg'] != None:
+                await self.guild_info[guild_id]['music_info_msg'].delete()
     
     @app_commands.command(name='play', description='Play music from youtube')
     async def play(self, interaction: discord.Interaction, query: str = None):
