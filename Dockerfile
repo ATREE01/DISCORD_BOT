@@ -3,12 +3,14 @@ FROM python:3.12.7-slim-bookworm
 WORKDIR /app
 
 # Install ffmpeg
-RUN apt-get update && apt-get install -y ffmpeg && apt-get clean
+RUN apt-get update && \
+    apt-get install -y wget && \
+    wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
+    apt-get install -y ./google-chrome-stable_current_amd64.deb && \
+    rm google-chrome-stable_current_amd64.deb && \
+    apt-get clean
 
 COPY requirements.txt .
-
-RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-RUN apt-get install ./google-chrome-stable_current_amd64.deb
 
 RUN pip install -r requirements.txt
 
