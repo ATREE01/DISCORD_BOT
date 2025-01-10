@@ -2,5 +2,6 @@
 .venv
 __pycache__
 
+youtube_reminder_data/*
 testfiles
 *.ps1
