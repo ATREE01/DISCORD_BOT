@@ -18,10 +18,10 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p youtube_reminder_data
-RUN echo "{}" > youtube_reminder_data/guild_text_channel.json
-RUN echo "{}" > youtube_reminder_data/remind_list.json
-RUN echo "{}" > youtube_reminder_data/last_stream.json
-RUN echo "{}" > youtube_reminder_data/last_video.json
+# RUN mkdir -p youtube_reminder_data
+# RUN echo "{}" > youtube_reminder_data/guild_text_channel.json
+# RUN echo "{}" > youtube_reminder_data/remind_list.json
+# RUN echo "{}" > youtube_reminder_data/last_stream.json
+# RUN echo "{}" > youtube_reminder_data/last_video.json
 
 CMD ["python", "bot.py"]
