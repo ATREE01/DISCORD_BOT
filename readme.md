@@ -6,6 +6,21 @@ This project is a custom Discord bot designed to enhance the user experience on 
 ## Features
 - **Custom Commands**: Responds to user-defined commands.
 - **Music Playback**: Plays music from youtube.
+- **Youtube Reminder**: Send notification on new video or stream.
+- **Image Downloader**: Download Image from Instagram or Twitter.
+
+##  Reminder
+
+Need to create a directory at root folder and create the follwoing json file in it.
+And Remember to write `{}` in the file. This is for the youtube reminder.
+```
+|  
+└─── youtube_reminder_data
+    ├─ guild_text_channel.json
+    ├─ last_stream.json
+    ├─ last_video.json
+    └─ remind_list.json
+```
 
 ## Local Installation
 1. Clone the repository:
