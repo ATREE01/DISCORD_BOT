@@ -13,7 +13,8 @@ import asyncio
 import requests
 
 import uuid
-import os 
+import os
+import shutil
 
 class ImageDownloader(commands.Cog, description="Use to download photo from website."):
     def __init__(self, bot):
@@ -27,7 +28,7 @@ class ImageDownloader(commands.Cog, description="Use to download photo from webs
         options.add_argument("--enable-unsafe-swiftshader")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument('--log-level=3')    
+        options.add_argument('--log-level=3')
         return options
         
     @app_commands.command(name='download_img',description="download img from instagram or twitter")
@@ -38,7 +39,7 @@ class ImageDownloader(commands.Cog, description="Use to download photo from webs
         try:
             if "instagram" in url:
                 driver.get(url)
-                await asyncio.sleep(4)
+                await asyncio.sleep(5)
                 img_urls = []
                 post = driver.find_element(By.CLASS_NAME, "_aatk._aatn")
                 try:
@@ -50,38 +51,39 @@ class ImageDownloader(commands.Cog, description="Use to download photo from webs
                                 img_urls.append(img_src)
                         button = driver.find_element(By.CLASS_NAME, "_afxw._al46._al47") #試著尋找有沒有button如果沒找地的話會跳exception 接下來就只會執行except的部分
                         button.click()#最重要的部分，去點擊那個向右的按鈕
-                        await asyncio.sleep(0.3) #按下按鈕後給他時間讀取一下
+                        await asyncio.sleep(0.5) #按下按鈕後給他時間讀取一下
                 except:
                     pass
                     
                 driver.close()
                 
+                os.makedirs("temp/", exist_ok=True)
                 for index, url in enumerate (img_urls):
                     response = requests.get(url)
                     if response.status_code:
                         filename = str(uuid.uuid4())
-                        with open(f"{filename}.png",'wb') as output:
+                        with open(f"temp/{filename}.png",'wb') as output:
                             output.write(response.content)  
-                            await interaction.followup.send(file = discord.File(f"{filename}.png"))
-                        os.remove(f"{filename}.png")
+                            await interaction.followup.send(file = discord.File(f"temp/{filename}.png"))
+                shutil.rmtree("temp/")
                         
             elif 'twitter' or 'x' in url:
                 driver.get(url)
-                await asyncio.sleep(2)
-                imgs = driver.find_elements(By.XPATH, "//img[@alt='圖片']")                
+                await asyncio.sleep(5)     
+                imgs = driver.find_elements(By.XPATH, "//img[@alt='Image']")      
+                os.makedirs("temp/", exist_ok=True)
                 for index, img in enumerate (imgs):
                     img_url = img.get_attribute('src')
                     response = requests.get(img_url)
                     if response.status_code:
                         filename = str(uuid.uuid4())
-                        with open(f"{filename}.png",'wb') as output:
+                        with open(f"temp/{filename}.png",'wb') as output:
                             output.write(response.content)  
-                            await interaction.followup.send(file = discord.File(f"{filename}.png")) 
-                        os.remove(f"{filename}.png")
+                            await interaction.followup.send(file = discord.File(f"temp/{filename}.png")) 
+                shutil.rmtree("temp/")
                 driver.close()
         except Exception as e:
-            # print(e)
-            await interaction.followup.send("Incorrect URL!")
+            await interaction.followup.send("Some error occured. Please check the url and try again.")
 
 async def setup(bot):
     await bot.add_cog(ImageDownloader(bot))
