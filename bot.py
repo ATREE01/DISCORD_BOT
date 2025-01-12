@@ -17,7 +17,7 @@ class Bot(commands.Bot):
     
     async def setup_hook(self):
         for filename in os.listdir("./cogs"):
-            if filename.endswith(".py") and filename == "music.py": # there is some problem with other function so currently activate music
+            if filename.endswith(".py"):
                 await bot.load_extension(f"cogs.{filename[:-3]}")
 
     async def on_ready(self):
