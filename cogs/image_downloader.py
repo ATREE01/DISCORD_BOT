@@ -39,10 +39,16 @@ class ImageDownloader(commands.Cog, description="Use to download photo from webs
         try:
             if "instagram" in url:
                 driver.get(url)
-                await asyncio.sleep(5)
+                await asyncio.sleep(3)
                 img_urls = []
                 post = driver.find_element(By.CLASS_NAME, "_aatk._aatn")
                 try:
+                    
+                    # close the pop up when loading the instagram page without login
+                    pop_up = driver.find_element(By.CLASS_NAME, "x7r02ix.xf1ldfh.x131esax.xdajt7p.xxfnqb6.xb88tzc.xw2csxc.x1odjw0f.x5fp0pe")
+                    close_btn = pop_up.find_element(By.CLASS_NAME, "x6s0dn4.x78zum5.xdt5ytf.xl56j7k")
+                    close_btn.click()
+                    
                     while True:
                         datas = post.find_elements(By.CLASS_NAME, "x5yr21d.xu96u03.x10l6tqk.x13vifvy.x87ps6o.xh8yej3") #找到所有的 注意這邊是find_elements 後面有s
                         for data in datas:
@@ -51,8 +57,9 @@ class ImageDownloader(commands.Cog, description="Use to download photo from webs
                                 img_urls.append(img_src)
                         button = driver.find_element(By.CLASS_NAME, "_afxw._al46._al47") #試著尋找有沒有button如果沒找地的話會跳exception 接下來就只會執行except的部分
                         button.click()#最重要的部分，去點擊那個向右的按鈕
-                        await asyncio.sleep(0.5) #按下按鈕後給他時間讀取一下
-                except:
+                        await asyncio.sleep(0.3) #按下按鈕後給他時間讀取一下
+                except Exception as e:
+                    print(e)
                     pass
                     
                 driver.close()
@@ -69,7 +76,7 @@ class ImageDownloader(commands.Cog, description="Use to download photo from webs
                         
             elif 'twitter' or 'x' in url:
                 driver.get(url)
-                await asyncio.sleep(5)     
+                await asyncio.sleep(3)     
                 imgs = driver.find_elements(By.XPATH, "//img[@alt='Image']")      
                 os.makedirs("temp/", exist_ok=True)
                 for index, img in enumerate (imgs):
