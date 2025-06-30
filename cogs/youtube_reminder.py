@@ -46,8 +46,8 @@ class YoutubeReminder(commands.Cog, description="Commands for youtube remineder"
     
     @app_commands.command(name='set_channel', description="Set this channel for remind message")
     async def set_channel(self, interaction:discord.Interaction):
-        text_channel_id = interaction.channel.id
-        guild_id = interaction.guild_id
+        text_channel_id = str(interaction.channel.id)
+        guild_id = str(interaction.guild_id)
         
         guild_channel = self.session.query(GuildTextChannel).filter_by(guild_id=guild_id).first()
         if guild_channel:
@@ -60,9 +60,9 @@ class YoutubeReminder(commands.Cog, description="Commands for youtube remineder"
         await interaction.response.send_message("Setting complete.")
     
     @app_commands.command(name="add_youtube_channel", description="Add youtube channel you want to receive remind.")
-    @app_commands.describe(channel_url = "e.g. \"https://www.youtube.com/@*channel_name*\"")
-    async def add_channel(self, interaction: discord.Interaction, channel_url: str ):
-        guild_id = interaction.guild_id
+    @app_commands.describe(channel_url = "e.g. \"https://www.youtube.com/@*channel_name*\"")    
+    async def add_channel(self, interaction: discord.Interaction, channel_url: str ):        
+        guild_id = str(interaction.guild_id)
         
         if not self.session.query(GuildTextChannel).filter_by(guild_id=guild_id).first():
             await interaction.response.send_message("Haven't set the channel for remind. Must use \"set_channel\" first.")
@@ -80,6 +80,7 @@ class YoutubeReminder(commands.Cog, description="Commands for youtube remineder"
         if not youtube_channel:
             youtube_channel = YoutubeChannel(channel_name=youtube_channel_name)
             self.session.add(youtube_channel)
+            self.session.commit()
 
         reminder = Reminder(guild_id=guild_id, channel_name=youtube_channel_name)
         try:
@@ -121,83 +122,105 @@ class YoutubeReminder(commands.Cog, description="Commands for youtube remineder"
         else:
             await interaction.response.send_message("Please check the name and try again.")
     
-    async def scrawler(self, driver, channel: str):
-        # remind for stream
-        url_stream = self.BASEURL + f'{channel}/streams'
-        driver.get(url_stream)
-        await asyncio.sleep(0.8)
-        
-        channel_name_element = driver.find_element(By.XPATH, "//*[@id='text']")
-        channel_name = channel_name_element.text
-        streams = driver.find_elements(By.XPATH, "//*[@id='contents']/ytd-rich-item-renderer")
-        remind_stream = None
-        
-        now_date = datetime.date.today().strftime("%Y/%#m/%#d")
-        now_time = [datetime.datetime.now().hour, datetime.datetime.now().minute]
-        for stream in streams:
-            if stream.text[0: 4] == '即將直播':
-                stream_time_element = stream.find_elements(By.CLASS_NAME, "inline-metadata-item.style-scope.ytd-video-meta-block")[-1]
-                stream_time = stream_time_element.text
-                live_date = stream_time.split('：')[1].split(' ')[0]
-                if live_date == now_date:
-                    live_time = [0, int(stream_time[-2: ])]
-                    if stream_time[-5].isdigit():
-                        live_time[0] = int(stream_time[-5 : -3])
-                    else:
-                        live_time[0] = int(stream_time[-4 : -3])
-                    if (live_time[0] * 60 + live_time[1]) -  (now_time[0] * 60 + now_time[1]) <= self.remind_before_min :
-                        remind_stream = stream
-            else:
-                break
-        if remind_stream != None:
-            isSuccess = True
+    async def _send_notifications(self, channel_name, channel, message):
+        """Send notifications to all subscribed channels."""
+        reminders = self.session.query(Reminder).filter_by(channel_name=channel).all()
+        for reminder in reminders:
+            guild_channel = self.session.query(GuildTextChannel).filter_by(guild_id=str(reminder.guild_id)).first()
+            text_channel = self.bot.get_channel(int(guild_channel.text_channel_id))
             try:
-                title_element = remind_stream.find_element(By.CLASS_NAME, "yt-simple-endpoint.focus-on-expand.style-scope.ytd-rich-grid-media")
-                title = title_element.text
-                link_element = remind_stream.find_element(By.CLASS_NAME, "yt-simple-endpoint.inline-block.style-scope.ytd-thumbnail")
-            except Exception:
-                print("ERROR!")
-                isSuccess = False
-            
-            last_stream = self.session.query(LastStream).filter_by(channel_name=channel).first()
-            if isSuccess and (not last_stream or link != last_stream.stream_link):
-                if not last_stream:
-                    last_stream = LastStream(channel_name=channel, stream_link=link)
-                    self.session.add(last_stream)
-                else:
-                    last_stream.stream_link = link
-                self.session.commit()
-
-                reminders = self.session.query(Reminder).filter_by(channel_name=channel).all()
-                for reminder in reminders:
-                    guild_channel = self.session.query(GuildTextChannel).filter_by(guild_id=reminder.guild_id).first()
-                    try:
-                        await text_channel.send(f"**New steam at {live_time[0]} : {live_time[1]:0>2}**\n{channel_name} has a new stream: \n {title}  !\n{link} ")
-                    except Exception:
-                        print("ERROR!")
-                    
-        #remind for video          
-        url_video = self.BASEURL + f'{channel}/videos'
-        driver.get(url_video)
-        await asyncio.sleep(0.8)
-        lastest_video_element =  driver.find_element(By.XPATH, "//*[@id=\"contents\"]/ytd-rich-item-renderer[1]")
-        link_element = lastest_video_element.find_element(By.CLASS_NAME, "yt-simple-endpoint.inline-block.style-scope.ytd-thumbnail")
-        link = link_element.get_attribute("href")
-        
-        last_video = self.session.query(LastVideo).filter_by(channel_name=channel).first()
-        if (not last_video or link != last_video.video_link) and last_video and last_video.video_link != None:
-            reminders = self.session.query(Reminder).filter_by(channel_name=channel).all()
-            for reminder in reminders:
-                guild_channel = self.session.query(GuildTextChannel).filter_by(guild_id=reminder.guild_id).first()
-                text_channel = self.bot.get_channel(guild_channel.text_channel_id)
-                await text_channel.send(f"**Video reminder**\n {channel_name} upload a new video {link}")
+                await text_channel.send(message)
+            except Exception as e:
+                print(f"Failed to send message to channel {guild_channel.text_channel_id}: {e}")
+    
+    async def _update_content_and_notify(self, content_type, channel, channel_name, link, extra_data=None):
+        """Update database and send notifications if content is new."""
+        last_entry = None
+        if content_type == "stream":
+            last_entry = self.session.query(LastStream).filter_by(channel_name=channel).first()
+            if not last_entry:
+                last_entry = LastStream(channel_name=channel, stream_link=link)
+                self.session.add(last_entry)
+            elif link == last_entry.stream_link:
+                return  # Not a new stream
+            else:
+                last_entry.stream_link = link
                 
-        if not last_video:
-            last_video = LastVideo(channel_name=channel, video_link=link)
-            self.session.add(last_video)
-        else:
-            last_video.video_link = link
+            title = extra_data.get("title", "")
+            live_time = extra_data.get("live_time", [0, 0])
+            message = f"**New steam at {live_time[0]} : {live_time[1]:0>2}**\n{channel_name} has a new stream: \n {title}!\n{link} "
+             
+        elif content_type == "video":
+            last_entry = self.session.query(LastVideo).filter_by(channel_name=channel).first()
+            
+            print(f"Checking last video for channel {channel}: {last_entry.video_link}")
+            print(f"New video link: {link}")
+            print(f"Whether is same video: {last_entry.video_link == link}")
+            if not last_entry:
+                last_entry = LastVideo(channel_name=channel, video_link=link)
+                self.session.add(last_entry)
+            elif not last_entry.video_link or link == last_entry.video_link:
+                last_entry.video_link = link
+                return  # Not a new video
+            else:
+                last_entry.video_link = link
+                
+            message = f"**Video reminder**\n {channel_name} upload a new video \n{link}"
+        
         self.session.commit()
+        await self._send_notifications(channel_name, channel, message)
+        
+    async def scrawler(self, driver, channel: str):
+        try:
+            # Get channel name (common for both stream and video)
+            url_stream = self.BASEURL + f'{channel}/streams'
+            driver.get(url_stream)
+            await asyncio.sleep(0.8)
+            
+            try:
+                channel_name_element = driver.find_element(By.XPATH, "//*[@id='page-header']/yt-page-header-renderer/yt-page-header-view-model/div/div[1]/div/yt-dynamic-text-view-model")
+                channel_name = channel_name_element.text
+            except Exception as e:
+                print(f"Could not find channel name for {channel}: {e}")
+                channel_name = channel  # Fallback to the channel ID
+            
+            # Process stream
+            now_date = datetime.date.today().strftime("%Y/%#m/%#d")
+            now_time = [datetime.datetime.now().hour, datetime.datetime.now().minute]
+            
+            try:
+                latest_stream_element = driver.find_element(By.XPATH, "//*[@id=\"contents\"]/ytd-rich-item-renderer[1]")
+                if '正在等候' in latest_stream_element.text:
+                    stream_time_element = latest_stream_element.find_elements(By.CLASS_NAME, "inline-metadata-item.style-scope.ytd-video-meta-block")[-1]
+                    stream_time = stream_time_element.text
+                    live_date = stream_time.split('：')[1].split(' ')[0]
+                    if live_date == now_date:
+                        live_time = [0, int(stream_time[-2:])]
+                        if stream_time[-5].isdigit():
+                            live_time[0] = int(stream_time[-5:-3])
+                        else:
+                            live_time[0] = int(stream_time[-4:-3])
+                        if (live_time[0] * 60 + live_time[1]) - (now_time[0] * 60 + now_time[1]) <= self.remind_before_min:
+                            title = latest_stream_element.find_element(By.CLASS_NAME, "yt-simple-endpoint.focus-on-expand.style-scope.ytd-rich-grid-media").text
+                            link = latest_stream_element.find_element(By.CLASS_NAME, "yt-simple-endpoint.inline-block.style-scope.ytd-thumbnail").get_attribute("href")
+                            await self._update_content_and_notify("stream", channel, channel_name, link, {"title": title, "live_time": live_time})
+            except Exception as e:
+                print(f"Error processing stream for {channel}: There's no stream yet or the channel is not valid.")
+                        
+            # Process video          
+            try:
+                url_video = self.BASEURL + f'{channel}/videos'
+                driver.get(url_video)
+                await asyncio.sleep(0.8)
+                
+                latest_video_element = driver.find_element(By.XPATH, "//*[@id=\"contents\"]/ytd-rich-item-renderer[1]")
+                link_element = latest_video_element.find_element(By.CLASS_NAME, "yt-simple-endpoint.inline-block.style-scope.ytd-thumbnail")
+                link = link_element.get_attribute("href").split('&pp=')[0]
+                await self._update_content_and_notify("video", channel, channel_name, link)
+            except Exception as e:
+                print(f"Error processing video for {channel}: There's no video yet or the channel is not valid.")
+        except Exception as e:
+            print(f"Fatal error scraping channel {channel}: {e}")
 
 
     @tasks.loop(minutes = 15)  

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: discord-bot
+description: A Helm chart for your Discord bot and PostgreSQL database
+version: 0.1.0
+appVersion: "1.0"
