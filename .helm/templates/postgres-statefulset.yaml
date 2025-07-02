@@ -19,6 +19,9 @@ spec:
         - name: postgresql
           image: "{{ .Values.postgresql.image }}"
           imagePullPolicy: {{ .Values.postgresql.pullPolicy }}
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           envFrom:
             - secretRef:
                 name: {{ .Values.postgresql.secretName | default "postgresql-secrets" }}
@@ -27,7 +30,7 @@ spec:
           {{- if .Values.postgresql.persistence.enabled }}
           volumeMounts:
             - name: postgresql-data
-              mountPath: /var/lib/postgresql/data
+              mountPath: /var/lib/postgresql/data/pgdata
           {{- end }}
           {{- if not .Values.postgresql.persistence.enabled }}
           volumes:
