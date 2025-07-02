@@ -1,6 +1,7 @@
 import os
 import asyncio
 import datetime
+import logging
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -14,6 +15,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 from models.base import Base, GuildTextChannel, YoutubeChannel, Reminder, LastStream, LastVideo
+
+logger = logging.getLogger(__name__)
 
 class YoutubeReminder(commands.Cog, description="Commands for youtube remineder"):
     def __init__(self, bot):
@@ -99,7 +102,7 @@ class YoutubeReminder(commands.Cog, description="Commands for youtube remineder"
         reminders = self.session.query(Reminder).filter_by(guild_id=guild_id).all()
 
         if not reminders:
-            emb.add_field(name='You havent\'t add any channel yet!', value='', inline=False)
+            emb.add_field(name='You haven\'t add any channel yet!', value='', inline=False)
         else:
             for reminder in reminders:
                 emb.add_field(name=f"`{reminder.channel_name}`", value='', inline=False)
@@ -131,7 +134,7 @@ class YoutubeReminder(commands.Cog, description="Commands for youtube remineder"
             try:
                 await text_channel.send(message)
             except Exception as e:
-                print(f"Failed to send message to channel {guild_channel.text_channel_id}: {e}")
+                logger.error(f"Failed to send message to channel {guild_channel.text_channel_id}: {e}")
     
     async def _update_content_and_notify(self, content_type, channel, channel_name, link, extra_data=None):
         """Update database and send notifications if content is new."""
@@ -152,10 +155,11 @@ class YoutubeReminder(commands.Cog, description="Commands for youtube remineder"
              
         elif content_type == "video":
             last_entry = self.session.query(LastVideo).filter_by(channel_name=channel).first()
-            
-            print(f"Checking last video for channel {channel}: {last_entry.video_link}")
-            print(f"New video link: {link}")
-            print(f"Whether is same video: {last_entry.video_link == link}")
+            if last_entry:
+                logger.info(f"Checking last video for channel {channel}: {last_entry.video_link}")
+                logger.info(f"New video link: {link}")
+                logger.info(f"Whether is same video: {last_entry.video_link == link}")
+
             if not last_entry:
                 last_entry = LastVideo(channel_name=channel, video_link=link)
                 self.session.add(last_entry)
@@ -181,7 +185,7 @@ class YoutubeReminder(commands.Cog, description="Commands for youtube remineder"
                 channel_name_element = driver.find_element(By.XPATH, "//*[@id='page-header']/yt-page-header-renderer/yt-page-header-view-model/div/div[1]/div/yt-dynamic-text-view-model")
                 channel_name = channel_name_element.text
             except Exception as e:
-                print(f"Could not find channel name for {channel}: {e}")
+                logger.warning(f"Could not find channel name for {channel}: {e}")
                 channel_name = channel  # Fallback to the channel ID
             
             # Process stream
@@ -205,7 +209,7 @@ class YoutubeReminder(commands.Cog, description="Commands for youtube remineder"
                             link = latest_stream_element.find_element(By.CLASS_NAME, "yt-simple-endpoint.inline-block.style-scope.ytd-thumbnail").get_attribute("href")
                             await self._update_content_and_notify("stream", channel, channel_name, link, {"title": title, "live_time": live_time})
             except Exception as e:
-                print(f"Error processing stream for {channel}: There's no stream yet or the channel is not valid.")
+                logger.warning(f"Error processing stream for {channel}: {e}")
                         
             # Process video          
             try:
@@ -218,14 +222,14 @@ class YoutubeReminder(commands.Cog, description="Commands for youtube remineder"
                 link = link_element.get_attribute("href").split('&pp=')[0]
                 await self._update_content_and_notify("video", channel, channel_name, link)
             except Exception as e:
-                print(f"Error processing video for {channel}: There's no video yet or the channel is not valid.")
+                logger.warning(f"Error processing video for {channel}: {e}")
         except Exception as e:
-            print(f"Fatal error scraping channel {channel}: {e}")
+            logger.error(f"Fatal error scraping channel {channel}: {e}")
 
 
     @tasks.loop(minutes = 15)  
     async def dectect_update(self):
-        print(datetime.datetime.now(), "Start checking update")
+        logger.info(f"{datetime.datetime.now()} Start checking update")
         driver = webdriver.Chrome(service=self.service, options=self.chrome_options)
         
         channels = [c.channel_name for c in self.session.query(YoutubeChannel).all()]

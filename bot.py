@@ -3,11 +3,15 @@ from discord.ext import commands
 from discord import app_commands
 
 import os
+import logging
 from dotenv import load_dotenv
 load_dotenv()
 
 import time
 from colorama import Back, Fore, Style
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class Bot(commands.Bot):
     def __init__(self):
@@ -21,9 +25,9 @@ class Bot(commands.Bot):
     async def on_ready(self):
         await bot.change_presence(activity=discord.Game(name="/help for more inforemation"))
         prefx = (Back.BLACK + Fore.GREEN + time.strftime("%H:%M:%S", time.localtime()) + Back.RESET + Fore.WHITE + Style.BRIGHT)
-        print(prefx + ' 目前登入身份：' + Fore.BLUE + self.user.name + Fore.RESET)
+        logger.info(prefx + f' Logged in as: {self.user.name}')
         sycned = await bot.tree.sync()
-        print(prefx + " Slash CMDS Sycned " + Fore.YELLOW + str(len(sycned)) + " Commands" + Fore.RESET)
+        logger.info(prefx + f" Slash CMDS Synced {len(sycned)} Commands")
 
 bot = Bot()
 
@@ -32,8 +36,7 @@ bot = Bot()
 async def help(interaction: discord.Interaction, command:str=None):
     
     emb = discord.Embed(title='Shows help for ATREE_BOT\'s slash commands.', color=discord.Color.blue(),
-                        description=f'Use `/help <command>` to gain more information about that command '
-                                    f':smiley:\n')
+                        description=f'Use `/help <command>` to gain more information about that command 'f':smiley:\n')
     
     # iterating trough cogs
     if command == None:
