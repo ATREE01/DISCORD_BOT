@@ -17,8 +17,12 @@ class Bot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="$",intents=discord.Intents().all(), heartbeat_timeout=100)
     
+    disable_cogs = ["youtube_reminder.py"]
+    
     async def setup_hook(self):
         for filename in os.listdir("./cogs"):
+            if filename in self.disable_cogs:
+                continue
             if filename.endswith(".py"):
                 await bot.load_extension(f"cogs.{filename[:-3]}")
 
